@@ -1,46 +1,74 @@
-import chromadb
-from chromadb.config import Settings
+import os
+import uuid
+from chroma_client import client
 from embedder import embed
 from skill_extractor import parse_skills
-from config import CHROMA_DIR
-import os, uuid
-
-client = chromadb.Client(
-    Settings(persist_directory=CHROMA_DIR)
-)
+from pdf_loader import extract_text_from_pdf
 
 resume_col = client.get_or_create_collection("resumes")
 job_col = client.get_or_create_collection("jobs")
 
+
 def ingest_resumes(path="data/resumes"):
-    for file in os.listdir(path):
-        text = open(f"{path}/{file}", encoding="utf8").read()
-        primary, secondary = parse_skills(text)
+    print(f"Scanning resumes folder: {os.path.abspath(path)}")
+    files = os.listdir(path)
+    print("Files:", files)
+
+    added = 0
+
+    for file in files:
+        if not file.lower().endswith(".pdf"):
+            continue
+
+        text = extract_text_from_pdf(os.path.join(path, file))
+
+        if not text or len(text.strip()) < 50:
+            print(f"⚠️ Skipping {file}: no readable text (likely scanned PDF)")
+            continue
+
+        primary_skills, secondary_skills = parse_skills(text)
 
         resume_col.add(
-            ids=[str(uuid.uuid4())],
+            ids=[file],
             documents=[text],
             embeddings=[embed(text)],
             metadatas=[{
-                "primary_skills": primary,
-                "secondary_skills": secondary,
-                "experience": 5,
-                "location": "Bangalore",
-                "role": "Backend"
+                "filename": file,
+                "primary_skills": ", ".join(primary_skills),
+                "secondary_skills": ", ".join(secondary_skills)
             }]
         )
 
-    client.persist()
+
+
+        added += 1
+
+    print(f"✅ Resumes added: {added}")
+
 
 def ingest_jobs(path="data/jobs"):
-    for file in os.listdir(path):
-        text = open(f"{path}/{file}", encoding="utf8").read()
+    print(f"Scanning jobs folder: {os.path.abspath(path)}")
+    files = os.listdir(path)
+    print("Files:", files)
+
+    added = 0
+
+    for file in files:
+        if not file.lower().endswith(".txt"):
+            continue
+
+        with open(os.path.join(path, file), encoding="utf-8") as f:
+            text = f.read()
+
+        primary_skills, secondary_skills = parse_skills(text)
 
         job_col.add(
             ids=[file],
             documents=[text],
             embeddings=[embed(text)],
             metadatas=[{
+                "job_id": file,
+                "skills": ", ".join(primary_skills + secondary_skills),
                 "min_exp": 3,
                 "max_exp": 8,
                 "location": "Bangalore",
@@ -48,4 +76,12 @@ def ingest_jobs(path="data/jobs"):
             }]
         )
 
-    client.persist()
+
+        added += 1
+
+    print(f"✅ Jobs added: {added}")
+
+
+if __name__ == "__main__":
+    ingest_resumes()
+    ingest_jobs()
