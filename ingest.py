@@ -1,9 +1,8 @@
 import os
-import uuid
 from chroma_client import client
 from embedder import embed
 from skill_extractor import parse_skills
-from pdf_loader import extract_text_from_pdf
+from text_utils import extract_text
 
 resume_col = client.get_or_create_collection("resumes")
 job_col = client.get_or_create_collection("jobs")
@@ -20,7 +19,7 @@ def ingest_resumes(path="data/resumes"):
         if not file.lower().endswith(".pdf"):
             continue
 
-        text = extract_text_from_pdf(os.path.join(path, file))
+        text = extract_text(os.path.join(path, file))
 
         if not text or len(text.strip()) < 50:
             print(f"⚠️ Skipping {file}: no readable text (likely scanned PDF)")
